@@ -55,21 +55,22 @@ def handle_player(client: socket.socket, addr):
             with lock1:
                 players_copy = dict(players)
 
-            positions_expected = len(players_copy)
+            positions_expected = len(players_copy)-1
 
             client.sendall(struct.pack('!I', positions_expected))
 
             for name, pos in players_copy.items():
 
+                if name != username:
 
-                x = int(pos[0])
-                y = int(pos[1])
+                    x = int(pos[0])
+                    y = int(pos[1])
 
-                encoded_name = name.encode()
+                    encoded_name = name.encode()
 
-                data_buffer = struct.pack("!iiI", x, y, len(encoded_name))
+                    data_buffer = struct.pack("!iiI", x, y, len(encoded_name))
 
-                client.sendall(data_buffer + encoded_name)
+                    client.sendall(data_buffer + encoded_name)
 
 
             
