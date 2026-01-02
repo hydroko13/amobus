@@ -1,4 +1,5 @@
 import pygame
+from camera import Camera
 
 class Player:
     def __init__(self, username, pos, game):
@@ -6,13 +7,23 @@ class Player:
         self.pos = pos
         self.target_pos = pos
         self.username_surf = game.notosans_font.render(self.username, False, (255, 255, 255))
+        self.window_size = (game.window_width, game.window_height)
+
+
+    def draw(self, surf: pygame.Surface, cam: Camera, is_main_player):
+
+        self.pos = (self.pos[0] + (self.target_pos[0] - self.pos[0]) / 25, self.pos[1] + (self.target_pos[1] - self.pos[1])  / 25)
+        
+        offset_position = (self.pos[0] - cam.pos.x + self.window_size[0] / 2, self.pos[1] - cam.pos.y + self.window_size[1] / 2)
+
+        if is_main_player:
+            pygame.draw.circle(surf, (255, 0, 0), offset_position, 20)
+        else:
+            pygame.draw.circle(surf, (255, 150, 150), offset_position, 20)
+        
+        surf.blit(self.username_surf, self.username_surf.get_rect(center=(offset_position[0], offset_position[1]-20)))
 
 
 
-    def draw(self, surf):
-
-        self.pos = (self.pos[0] + (self.target_pos[0] - self.pos[0]) / 12, self.pos[1] + (self.target_pos[1] - self.pos[1])  / 12)
-
-        pygame.draw.circle(surf, (255, 0, 0), self.pos, 20)
-        surf.blit(self.username_surf, self.username_surf.get_rect(center=(self.pos[0], self.pos[1]-20)))
+        
        

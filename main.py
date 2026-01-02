@@ -6,6 +6,7 @@ import sys
 from net import recv_exact
 import threading
 import struct
+from camera import Camera
 
 pygame.init()
 
@@ -31,6 +32,7 @@ class Game:
         self.main_player = Player(self.player_username, (100, 100), self)
         self.player_pos_lock = threading.Lock()
         self.other_players_lock = threading.Lock()
+        self.cam = Camera(self.main_player.pos)
 
         
 
@@ -39,10 +41,10 @@ class Game:
         
         with self.other_players_lock:
             for name, player in self.players.items():
-                player.draw(self.window)
+                player.draw(self.window, self.cam, False)
                 
         with self.player_pos_lock:
-            self.main_player.draw(self.window)
+            self.main_player.draw(self.window, self.cam, True)
         
     def communicate_with_server(self):
         try:
@@ -102,6 +104,13 @@ class Game:
 
     def update(self):
        
+
+        with self.player_pos_lock:
+            player_pos = self.main_player.pos
+        
+        self.cam.pos.x = player_pos[0]
+        self.cam.pos.y = player_pos[1]
+
         keys = pygame.key.get_pressed()
         
         
