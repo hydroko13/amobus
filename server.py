@@ -31,6 +31,8 @@ jabs = []
 jabs_lock = threading.Lock()
 death_broadcast_queue = deque()
 death_broadcast_queue_lock = threading.Lock()
+respawn_broadcast_queue = deque()
+respawn_broadcast_queue_lock = threading.Lock()
 dt = 0
 direction_facing_dict_inverted = {
     0: 'left',
@@ -45,6 +47,8 @@ dead_players_lock = threading.Lock()
 hurt_player_timers = []
 hurt_players_lock = threading.Lock()
 hurt_player_timers_lock = threading.Lock()
+respawn_timers = []
+respawn_timers_lock = threading.Lock()
 
 
 def handle_player(client: socket.socket, addr):
@@ -227,6 +231,28 @@ def handle_player(client: socket.socket, addr):
                 client.sendall(b'N')
 
 
+            respawn_player = None
+            with respawn_broadcast_queue_lock:
+                
+                if len(respawn_broadcast_queue) > 0:
+                    for i, respawn_broadcast in enumerate(respawn_broadcast_queue):
+                        if respawn_broadcast[0] == username:
+                            respawn_player = respawn_broadcast[1]
+                            respawn_broadcast_queue.remove(respawn_broadcast)
+                            
+                            break
+                            
+            if respawn_player is not None:
+                client.sendall(b'R')
+
+                player_name_encoded = respawn_player.encode()
+
+                client.sendall(struct.pack("!I", len(player_name_encoded))) # send byte length of dead player name, death x, and death y
+
+                client.sendall(player_name_encoded)
+
+            else:
+                client.sendall(b'N')
 
     except (ConnectionError, OSError):
         with lock1:
@@ -237,7 +263,7 @@ def handle_player(client: socket.socket, addr):
 
 
 def update_server():
-    global players, jabs, hurt_players, hurt_player_timers, jab_echo_queue, message_data, dt
+    global players, jabs, hurt_players, hurt_player_timers, jab_echo_queue, message_data, dt, respawn_timers
     
     clock = Clock()
 
@@ -325,7 +351,47 @@ def update_server():
             with dead_players_lock:
                 for new_dead_player in new_dead_players:
                     dead_players.add(new_dead_player[0])
+            
+            with respawn_timers_lock:
+                for new_dead_player in new_dead_players:
+                    respawn_timers.append((new_dead_player[0], 0))
 
+        with respawn_timers_lock:
+            for i, timer in enumerate(respawn_timers):
+                respawn_timers[i] = (timer[0], timer[1] + dt)
+
+
+        players_to_respawn = []
+
+        with respawn_timers_lock:
+            respawn_timers_copy = list(respawn_timers)
+
+        for i, timer in enumerate(respawn_timers_copy):
+            if timer[1] >= 1:
+                players_to_respawn.append(timer[0])
+
+        with respawn_timers_lock:
+            respawn_timers = [timer for timer in respawn_timers if timer[1] < 1]
+
+        with lock1:
+            players_copy = dict(players)
+
+        with respawn_broadcast_queue_lock:
+            for player_to_respawn in players_to_respawn:
+                for name, player in players_copy.items():                
+                    respawn_broadcast_queue.append((name, player_to_respawn))
+        
+        with lock1:
+            for player_to_respawn in players_to_respawn:
+                players[player_to_respawn] = (players[player_to_respawn][0], players[player_to_respawn][1], 30)
+
+        with dead_players_lock:
+            for player_to_respawn in players_to_respawn:
+                dead_players.remove(player_to_respawn)
+
+        with respawn_timers_lock:
+            print(respawn_timers)
+        
 
 
 server.listen()

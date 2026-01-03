@@ -176,7 +176,6 @@ class Game:
         self.respawning_lock = threading.Lock()
         self.chat_open_lock = threading.Lock()
 
-       
         
 
 
@@ -419,9 +418,24 @@ class Game:
 
                                     self.players[name].dead = True
                                     break
+                
+                respawn_b = recv_exact(self.server_socket, 1) # b in respawn_b means byte, same in death_b, etc
+                if respawn_b == b'R':
+                    player_name_length, = struct.unpack("!I", recv_exact(self.server_socket, 4))
+                    respawn_player_name = recv_exact(self.server_socket, player_name_length).decode()
 
+                    if respawn_player_name == self.player_username:
+                        with self.main_player_lock:
+                            self.main_player.dead = False
+                        self.respawn()
 
-                                    
+                    else:
+                        with self.other_players_lock:
+                            for name, player in self.players.items():
+                                if name == respawn_player_name:
+
+                                    self.players[name].dead = False
+                                    break
 
                 
         except (ConnectionError, OSError):
@@ -432,6 +446,15 @@ class Game:
 
         with self.respawning_lock:
             self.respawning = True
+        with self.chat_open_lock:
+            self.chat_open = False
+
+
+    def respawn(self):
+        with self.main_player_lock:
+            self.main_player.pos = (100, 100)
+        with self.respawning_lock:
+            self.respawning = False
         with self.chat_open_lock:
             self.chat_open = False
 
@@ -451,6 +474,7 @@ class Game:
         self.cam.pos.y = player_pos[1]
 
         keys = pygame.key.get_pressed()
+
         
         
 
