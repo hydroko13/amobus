@@ -223,7 +223,8 @@ class Game:
 
                     self.server_socket.sendall(encoded_msg)
                 
-                self.messages_sent = []
+                with self.sent_messages_lock:
+                    self.messages_sent = []
 
                 messages_expected, = struct.unpack("!I", recv_exact(self.server_socket, 4))
 

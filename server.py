@@ -6,6 +6,7 @@ import uuid
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 server.bind(('10.0.0.97', 8080))
 
@@ -13,7 +14,7 @@ players = {
 
 }
 
-message_data = []
+message_data = set()
 
 lock1 = threading.Lock()
 msg_lock = threading.Lock()
@@ -89,8 +90,7 @@ def handle_player(client: socket.socket, addr):
             with msg_lock:
                 for msg in new_messages:
                     full_msg = (msg[1], username, msg[0])
-                    if full_msg not in message_data:
-                        message_data.append(full_msg)
+                    message_data.add(full_msg)
 
                 message_data_copy = list(message_data)
 

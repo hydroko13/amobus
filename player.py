@@ -12,7 +12,7 @@ class Player:
 
     def draw(self, surf: pygame.Surface, cam: Camera, is_main_player):
 
-        self.pos = (self.pos[0] + (self.target_pos[0] - self.pos[0]) / 25, self.pos[1] + (self.target_pos[1] - self.pos[1])  / 25)
+        self.pos = (self.pos[0] + (self.target_pos[0] - self.pos[0]) / 3, self.pos[1] + (self.target_pos[1] - self.pos[1]) / 3)
         
         offset_position = (self.pos[0] - cam.pos.x + self.window_size[0] / 2, self.pos[1] - cam.pos.y + self.window_size[1] / 2)
 
