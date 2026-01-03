@@ -9,6 +9,7 @@ import struct
 from camera import Camera
 import time
 from jab import Jab
+from death_animation import DeathAnimation
 
 pygame.init()
 
@@ -103,6 +104,8 @@ class Game:
         self.notosans_font = pygame.font.Font(os.path.join('assets', 'fnt', 'notosans.ttf'))
         self.notosans_font_bigger = pygame.font.Font(os.path.join('assets', 'fnt', 'notosans.ttf'), 24)
         self.players = {}
+        self.death_animations = []
+        self.death_animations_lock = threading.Lock()
     
     
         self.main_player = Player(self.player_username, (100, 100), self)
@@ -223,6 +226,10 @@ class Game:
             # maybe some room for optimization here?
 
             self.main_player.draw(self.window, self.cam, True)
+
+        with self.death_animations_lock:
+            for death_animation in self.death_animations:
+                death_animation.draw(self.window, self.cam, self)
 
         if self.debug_hud:
             if self.dt != 0:
@@ -388,10 +395,11 @@ class Game:
                         self.jabs.append(Jab((jab_x, jab_y), self.direction_facing_dict_inverted[jab_direction], ''))
 
                 death_b = recv_exact(self.server_socket, 1)
-                print(death_b)
                 if death_b == b'D':
                     dead_player_name_length, death_x, death_y = struct.unpack("!Iii", recv_exact(self.server_socket, 12))
                     dead_player_name = recv_exact(self.server_socket, dead_player_name_length).decode()
+                    with self.death_animations_lock:
+                        self.death_animations.append(DeathAnimation((death_x, death_y)))
                     if dead_player_name == self.player_username:
                         with self.main_player_lock:
                             self.main_player.dead = True
@@ -425,6 +433,7 @@ class Game:
         keys = pygame.key.get_pressed()
         
         
+
         with self.hurt_lock:
             hurt_copy = self.hurt
         with self.main_player_lock:
@@ -474,8 +483,12 @@ class Game:
         with self.jabs_lock:
             for jab in self.jabs:
                 jab.update(self)
-                if jab.finished:
-                    self.jabs.remove(jab)
+            self.jabs = [jab for jab in self.jabs if not jab.finished]
+
+        with self.death_animations_lock:
+            for death_animation in self.death_animations:
+                death_animation.update(self.dt)
+            self.death_animations = [anim for anim in self.death_animations if anim.star_opacity > 0]
         
 
     def jab(self):

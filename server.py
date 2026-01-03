@@ -181,8 +181,11 @@ def handle_player(client: socket.socket, addr):
             jab_data = None
             with jab_echo_queue_lock:
                 if len(jab_echo_queue) > 0:
-                    if jab_echo_queue[-1][0] == username:
-                        jab_data = jab_echo_queue.pop()
+                    for i, jab in enumerate(jab_echo_queue):
+                        if jab[0] == username:
+                            jab_data = jab
+                            jab_echo_queue.remove(jab)
+                            break
 
             
             if jab_data is not None:
@@ -197,8 +200,13 @@ def handle_player(client: socket.socket, addr):
             with death_broadcast_queue_lock:
                 
                 if len(death_broadcast_queue) > 0:
-                    if death_broadcast_queue[-1][0] == username:
-                        death_data = death_broadcast_queue.pop()
+                    for i, death_broadcast in enumerate(death_broadcast_queue):
+                        if death_broadcast[0] == username:
+                            death_data = death_broadcast
+                            death_broadcast_queue.remove(death_broadcast)
+                            
+                            break
+                    
 
 
             
@@ -316,7 +324,7 @@ def update_server():
                         
             with dead_players_lock:
                 for new_dead_player in new_dead_players:
-                    dead_players.add(new_dead_player)
+                    dead_players.add(new_dead_player[0])
 
 
 
