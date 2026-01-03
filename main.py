@@ -202,6 +202,8 @@ class Game:
         with self.chat_open_lock:
             chat_open = self.chat_open
 
+        with self.respawning_lock:
+            is_respawning = self.respawning
         
         cam_offset = (self.cam.pos.x + self.window_width / 2, self.cam.pos.y + self.window_height / 2)
 
@@ -245,6 +247,9 @@ class Game:
 
                 self.window.blit(rendered_fps_text, (50, 50))
 
+        with self.message_data_lock:
+            message_data = self.message_data
+
         if chat_open:
             type_a_message_label = self.notosans_font.render('Type a message and press enter...', False, (255, 255, 255), (20, 20, 20))
             self.window.blit(type_a_message_label, (50, self.window_height-100))
@@ -252,11 +257,20 @@ class Game:
             msg = self.notosans_font_bigger.render(self.chat_message, False, (255, 255, 255), (20, 20, 20))
             self.window.blit(msg, (50, self.window_height-60))
 
-            for i, msg in enumerate(sorted(self.message_data, key=lambda x: x[0], reverse=True)):
+            for i, msg in enumerate(sorted(message_data, key=lambda x: x[0], reverse=True)):
                 _, name, text = msg
                 chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
                 self.window.blit(chat_msg, (50, self.window_height-200-i*30))
+        elif not is_respawning:
+            for i, msg in enumerate(sorted(message_data, key=lambda x: x[0], reverse=True)):
+                if i >= 10:
+                    break
+                _, name, text = msg
+                chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
+                self.window.blit(chat_msg, (50, self.window_height-300-i*30))
                 
+        
+            
         if not chat_open:
 
             for x in range(9):
