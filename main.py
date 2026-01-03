@@ -484,7 +484,7 @@ class Game:
                     if event.key == pygame.K_t:
                         self.chat_open = True
                     if event.key == pygame.K_o:
-                        if not self.chat_open:
+                        if not self.chat_open and not self.hurt:
                             self.jab()
 
                     if event.key in num_keys and not self.chat_open:
