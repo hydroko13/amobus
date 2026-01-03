@@ -7,7 +7,8 @@ from net import recv_exact
 import threading
 import struct
 from camera import Camera
-import uuid
+import time
+
 
 pygame.init()
 
@@ -155,7 +156,7 @@ class Game:
             msg = self.notosans_font_bigger.render(self.chat_message, False, (255, 255, 255), (20, 20, 20))
             self.window.blit(msg, (50, self.window_height-60))
 
-            for i, msg in enumerate(reversed(self.message_data)):
+            for i, msg in enumerate(sorted(self.message_data, key=lambda x: x[0], reverse=True)):
                 _, name, text = msg
                 chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
                 self.window.blit(chat_msg, (50, self.window_height-200-i*30))
@@ -215,13 +216,12 @@ class Game:
 
                 self.server_socket.sendall(struct.pack("!I", len(messages_sent_copy)))
 
-                for id, msg in messages_sent_copy:
+                for timestamp, msg in messages_sent_copy:
                     encoded_msg = msg.encode()
-                    encoded_id = id.encode()
-                    self.server_socket.sendall(struct.pack("!II", len(encoded_msg), len(encoded_id)))
+                    
+                    self.server_socket.sendall(struct.pack("!IQ", len(encoded_msg), timestamp))
 
                     self.server_socket.sendall(encoded_msg)
-                    self.server_socket.sendall(encoded_id)
                 
                 self.messages_sent = []
 
@@ -230,13 +230,12 @@ class Game:
                 new_message_data = []
 
                 for i in range(messages_expected):
-                    id_len, name_len, msg_len = struct.unpack("!III", recv_exact(self.server_socket, 12))
+                    timestamp, name_len, msg_len = struct.unpack("!QII", recv_exact(self.server_socket, 16))
 
-                    uuid_bytes = recv_exact(self.server_socket, id_len)
                     name_bytes = recv_exact(self.server_socket, name_len)
                     msg_bytes = recv_exact(self.server_socket, msg_len)
 
-                    new_message_data.append((uuid_bytes.decode(), name_bytes.decode(), msg_bytes.decode()))
+                    new_message_data.append((timestamp, name_bytes.decode(), msg_bytes.decode()))
 
                 with self.message_data_lock:
                     self.message_data = new_message_data
@@ -301,11 +300,11 @@ class Game:
                             self.chat_message = ''
                     if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                         if self.chat_open:
-                            uuid_string = str(uuid.uuid4())
+                            timestamp = time.time_ns()
                             with self.message_data_lock:
-                                self.message_data.append((uuid_string, self.player_username, self.chat_message))
+                                self.message_data.append((timestamp, self.player_username, self.chat_message))
                             with self.sent_messages_lock:
-                                self.messages_sent.append((uuid_string, self.chat_message))
+                                self.messages_sent.append((timestamp, self.chat_message))
                             self.chat_message = ''
                     if event.key == pygame.K_BACKSPACE:
                         if self.chat_open:

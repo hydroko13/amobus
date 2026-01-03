@@ -79,12 +79,12 @@ def handle_player(client: socket.socket, addr):
             new_messages_amount, = struct.unpack('!I', new_messages_amount_buf)
             new_messages = []
             for i in range(new_messages_amount):
-                msg_len, uuid_len = struct.unpack("!II", recv_exact(client, 8))
+                msg_len, timestamp = struct.unpack("!IQ", recv_exact(client, 12))
                 msg = recv_exact(client, msg_len).decode()
-                uuid_string = recv_exact(client, uuid_len).decode()
 
 
-                new_messages.append((msg, uuid_string))
+
+                new_messages.append((msg, timestamp))
 
             with msg_lock:
                 for msg in new_messages:
@@ -97,19 +97,15 @@ def handle_player(client: socket.socket, addr):
             client.sendall(struct.pack('!I', len(message_data_copy)))
 
             for full_msg in message_data_copy:
-                msg_uuid, name, msg = full_msg
-                uuid_encoded = msg_uuid.encode()
+                timestamp, name, msg = full_msg
                 name_encoded = name.encode()
                 msg_encoded = msg.encode()
 
-                client.sendall(struct.pack('!III', len(uuid_encoded), len(name_encoded), len(msg_encoded)))
+                client.sendall(struct.pack('!QII', timestamp, len(name_encoded), len(msg_encoded)))
 
-                client.sendall(uuid_encoded)
                 client.sendall(name_encoded)
                 client.sendall(msg_encoded)
 
-
-            print(message_data)
 
 
 
