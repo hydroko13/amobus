@@ -316,14 +316,14 @@ def update_server():
         with hurt_player_timers_lock:
             hurt_player_timers_copy = list(hurt_player_timers)
 
-        players_timer_finished = [t[1] for t in hurt_player_timers_copy if t[0] >= 0.4]
+        players_timer_finished = [t[1] for t in hurt_player_timers_copy if t[0] >= 0.2]
 
         with hurt_players_lock:
             hurt_players = {p for p in hurt_players if p not in players_timer_finished}
 
         
         with hurt_player_timers_lock:
-            hurt_player_timers = [t for t in hurt_player_timers if t[0] < 0.4]
+            hurt_player_timers = [t for t in hurt_player_timers if t[0] < 0.2]
             
         with lock1:
             players_copy = dict(players)
