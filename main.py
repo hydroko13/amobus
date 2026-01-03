@@ -397,6 +397,8 @@ class Game:
         
         with self.hurt_lock:
             hurt_copy = self.hurt
+        with self.player_pos_lock:
+            self.main_player.hurt = hurt_copy
         if not self.chat_open and self.main_player_jab is None and not hurt_copy:
 
             if keys[pygame.K_a]:
