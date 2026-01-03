@@ -8,7 +8,7 @@ import threading
 import struct
 from camera import Camera
 import time
-
+from jab import Jab
 
 pygame.init()
 
@@ -64,6 +64,29 @@ typeable_letters = {
     pygame.K_PERIOD : '.',
 }
 
+num_keys = {
+    pygame.K_0 : '0', 
+    pygame.K_1 : '1', 
+    pygame.K_2 : '2', 
+    pygame.K_3 : '3', 
+    pygame.K_4 : '4', 
+    pygame.K_5 : '5', 
+    pygame.K_6 : '6', 
+    pygame.K_7 : '7', 
+    pygame.K_8 : '8',
+    pygame.K_9 : '9',
+    pygame.K_KP0 : '0', 
+    pygame.K_KP1 : '1', 
+    pygame.K_KP2 : '2', 
+    pygame.K_KP3 : '3', 
+    pygame.K_KP4 : '4', 
+    pygame.K_KP5 : '5', 
+    pygame.K_KP6 : '6', 
+    pygame.K_KP7 : '7', 
+    pygame.K_KP8 : '8',
+    pygame.K_KP9 : '9'
+}
+
 class Game:
     def __init__(self):
 
@@ -104,6 +127,44 @@ class Game:
 
         self.message_data = []
         
+        self.inventory_data = [[-1 for x in range(9)] for y in range(4)]
+        self.selected_hotbar_slot = 1
+
+        self.direction_facing = 'left'
+
+
+        self.jab_dagger_img = pygame.image.load(os.path.join('assets', 'img', 'dagger_jab.png'))
+
+        self.jabs = []
+        self.main_player_jab = None
+
+
+        
+        self.echo_jab = False # whether or not to tell the server of a dagger jab
+
+        self.jab_lock = threading.Lock()
+        self.jabs_lock = threading.Lock()
+        
+        self.direction_facing_dict = {
+            'left': 0,
+            'right': 1,
+            'up' : 2,
+            'down': 3
+            
+        }
+
+        self.direction_facing_dict_inverted = {
+            0: 'left',
+            1: 'right',
+            2: 'up',
+            3: 'down'
+            
+        }
+
+        self.jab_data = None
+
+       
+        
 
 
     def update_world_surface(self):
@@ -133,12 +194,28 @@ class Game:
 
         
         self.window.blit(self.world_tilemap_surface, (int(-cam_offset[0]), int(-cam_offset[1])))
+
+        with self.jabs_lock:
+            for jab in self.jabs:
+                jab.draw(self)
         
         with self.other_players_lock:
             for name, player in self.players.items():
                 player.draw(self.window, self.cam, False)
                 
         with self.player_pos_lock:
+            main_player_pos = self.main_player.pos
+
+        
+        
+
+        if self.main_player_jab:
+            self.main_player_jab.draw(self)
+        
+
+        with self.player_pos_lock:
+            # maybe some room for optimization here?
+
             self.main_player.draw(self.window, self.cam, True)
 
         if self.debug_hud:
@@ -161,9 +238,25 @@ class Game:
                 chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
                 self.window.blit(chat_msg, (50, self.window_height-200-i*30))
                 
+        if not self.chat_open:
 
+            for x in range(9):
+                if x+1 == self.selected_hotbar_slot:
+                    pygame.draw.rect(self.window, (180, 100, 100), pygame.Rect(x*52+650, self.window_height-100, 50, 50))
+                else:
+                    pygame.draw.rect(self.window, (180, 180, 180), pygame.Rect(x*52+650, self.window_height-100, 50, 50))
 
+            for x in range(9):
+                if x+1 == self.selected_hotbar_slot:
+                    pygame.draw.rect(self.window, (150, 50, 50), pygame.Rect(x*52+650, self.window_height-100, 50, 50), 2)
+                else:
+                    pygame.draw.rect(self.window, (150, 150, 150), pygame.Rect(x*52+650, self.window_height-100, 50, 50), 2)
 
+            for x in range(9):
+                text_surf = self.notosans_font.render(f'{x+1}', False, (230, 230, 230))
+                self.window.blit(text_surf, text_surf.get_rect(center=(x*52+675, self.window_height-100)))
+
+        
         
     def communicate_with_server(self):
         try:
@@ -241,6 +334,27 @@ class Game:
                 with self.message_data_lock:
                     self.message_data = new_message_data
 
+                with self.jab_lock:
+                    echo_jab_copy = self.echo_jab
+                    if self.echo_jab:
+                        self.echo_jab = False
+                    jab_data_copy = self.jab_data
+
+                if echo_jab_copy:
+                    self.server_socket.sendall(b'J')
+                    self.server_socket.sendall(jab_data_copy)
+                else:
+                    self.server_socket.sendall(b'N')
+
+                b = recv_exact(self.server_socket, 1)
+
+                if b == b'J':
+                    jab_x, jab_y, jab_direction = struct.unpack("!iii", recv_exact(self.server_socket, 12))
+
+                    print(jab_x, jab_y, jab_direction)
+
+                    with self.jabs_lock:
+                        self.jabs.append(Jab((jab_x, jab_y), self.direction_facing_dict_inverted[jab_direction]))
 
 
                                     
@@ -263,27 +377,58 @@ class Game:
         keys = pygame.key.get_pressed()
         
         
-        if not self.chat_open:
+        if not self.chat_open and self.main_player_jab is None:
 
-            if keys[pygame.K_LEFT]:
+            if keys[pygame.K_a]:
+                self.direction_facing = 'left'
                 with self.player_pos_lock:
                     self.main_player.pos = (self.main_player.pos[0] - self.dt * 250, self.main_player.pos[1])
 
-            if keys[pygame.K_RIGHT]:
+            if keys[pygame.K_d]:
+                self.direction_facing = 'right'
                 with self.player_pos_lock:
                     self.main_player.pos = (self.main_player.pos[0] + self.dt * 250, self.main_player.pos[1])
             
-            if keys[pygame.K_UP]:
+            if keys[pygame.K_w]:
+                self.direction_facing = 'up'
                 with self.player_pos_lock:
                     self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] - self.dt * 250)
 
-            if keys[pygame.K_DOWN]:
+            if keys[pygame.K_s]:
+                self.direction_facing = 'down'
                 with self.player_pos_lock:
                     self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] + self.dt * 250)
 
         self.main_player.target_pos = self.main_player.pos
+
+        if self.main_player_jab:
+            self.main_player_jab.update(self)
+            if self.main_player_jab.finished:
+                self.main_player_jab = None
+
+        with self.jabs_lock:
+            for jab in self.jabs:
+                jab.update(self)
+                if jab.finished:
+                    self.jabs.remove(jab)
         
 
+    def jab(self):
+        if self.main_player_jab is None:
+
+            with self.player_pos_lock:
+                main_player_pos = self.main_player.pos
+
+
+
+            with self.jab_lock:
+                self.echo_jab = True
+                
+                self.jab_data = struct.pack("!iii", int(main_player_pos[0]), int(main_player_pos[1]), int(self.direction_facing_dict[self.direction_facing]))
+
+
+            
+            self.main_player_jab = Jab(main_player_pos, self.direction_facing)
 
     def run(self):
         networking_thread = threading.Thread(target=self.communicate_with_server)
@@ -316,7 +461,40 @@ class Game:
                             self.chat_message += letter
                     if event.key == pygame.K_t:
                         self.chat_open = True
+                    if event.key == pygame.K_o:
+                        if not self.chat_open:
+                            self.jab()
 
+                    if event.key in num_keys and not self.chat_open:
+                        n = num_keys[event.key]
+
+                        if n == '1':
+                            self.selected_hotbar_slot = 1    
+
+                        elif n == '2':
+                            self.selected_hotbar_slot = 2
+
+                        elif n == '3':
+                            self.selected_hotbar_slot = 3
+
+                        elif n == '4':
+                            self.selected_hotbar_slot = 4
+
+                        elif n == '5':
+                            self.selected_hotbar_slot = 5
+
+                        elif n == '6':
+                            self.selected_hotbar_slot = 6
+
+                        elif n == '7':
+                            self.selected_hotbar_slot = 7
+
+                        elif n == '8':
+                            self.selected_hotbar_slot = 8
+                            
+                        elif n == '9':
+                            self.selected_hotbar_slot = 9
+                            
 
 
 

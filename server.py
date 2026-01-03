@@ -3,6 +3,8 @@ import threading
 import struct
 from net import recv_exact
 import uuid
+from collections import deque
+
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -18,6 +20,9 @@ message_data = set()
 
 lock1 = threading.Lock()
 msg_lock = threading.Lock()
+jab_echo_queue = deque()
+jab_echo_queue_lock = threading.Lock()
+
 
 def handle_player(client: socket.socket, addr):
     global players
@@ -105,9 +110,37 @@ def handle_player(client: socket.socket, addr):
 
                 client.sendall(name_encoded)
                 client.sendall(msg_encoded)
+            
+            buf = recv_exact(client, 1)
+
+            if buf == b'J':
+                jab_buf = recv_exact(client, 12)
+                jab_x, jab_y, jab_direction = struct.unpack("!iii", jab_buf)
+
+                with lock1:
+                    players_copy = dict(players)
 
 
+                with jab_echo_queue_lock:
 
+                    for name, _ in players_copy.items():
+                        if name != username:
+                            jab_echo_queue.append((name, jab_x, jab_y, jab_direction))
+               
+            jab_data = None
+            with jab_echo_queue_lock:
+                if len(jab_echo_queue) > 0:
+                    if jab_echo_queue[-1][0] == username:
+                        jab_data = jab_echo_queue.pop()
+
+            
+            if jab_data is not None:
+                client.sendall(b"J")
+                buf = struct.pack("!iii", jab_data[1], jab_data[2], jab_data[3])
+                client.sendall(buf)
+
+            else:
+                client.sendall(b"N")
 
 
     except (ConnectionError, OSError):
