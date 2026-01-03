@@ -1,7 +1,7 @@
 import pygame
 
 class Jab:
-    def __init__(self, pos, direction):
+    def __init__(self, pos, direction, player_name):
         self.show_jab_dagger = True
         self.jab_tick = 0
         self.jab_rebound = False
@@ -9,6 +9,7 @@ class Jab:
         self.jab_offset = 0
         self.pos = pos
         self.direction = direction
+        self.player_name = player_name
         self.finished = False
 
     def update(self, game):
@@ -30,6 +31,43 @@ class Jab:
                     self.jab_offset = 50
             else:
                 self.jab_offset += game.dt * 600
+                if self.jab_offset >= 50:
+                    self.jab_wait = True
+                    self.jab_tick = 0
+                    self.jab_offset = 50
+
+    def get_tip_pos(self):
+        if self.direction == 'left':
+            dagger_forward_vec = (-1, 0)
+        if self.direction == 'right':
+            dagger_forward_vec = (1, 0)
+        if self.direction == 'down':
+            dagger_forward_vec = (0, 1)
+        if self.direction == 'up':
+            dagger_forward_vec = (0, -1)
+
+        pos = ((self.pos[0])+dagger_forward_vec[0]*(self.jab_offset+14), (self.pos[1])+dagger_forward_vec[1]*(self.jab_offset+14))
+        return pos
+
+    def update_serverside(self, dt):
+        if self.jab_rebound:
+            self.jab_offset -= dt * 400
+            if self.jab_offset <= 0:
+                self.show_jab_dagger = False
+                self.jab_tick = 0
+                self.jab_rebound = False
+                self.jab_offset = 0
+                self.finished = True
+            
+        else:
+            if self.jab_wait:
+                self.jab_tick += dt
+                if self.jab_tick > 0.12:
+                    self.jab_wait = False
+                    self.jab_rebound = True
+                    self.jab_offset = 50
+            else:
+                self.jab_offset += dt * 600
                 if self.jab_offset >= 50:
                     self.jab_wait = True
                     self.jab_tick = 0

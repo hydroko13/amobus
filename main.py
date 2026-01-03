@@ -138,6 +138,9 @@ class Game:
         self.jabs = []
         self.main_player_jab = None
 
+        self.hurt = False
+        self.hurt_lock = threading.Lock()
+
 
         
         self.echo_jab = False # whether or not to tell the server of a dagger jab
@@ -266,6 +269,16 @@ class Game:
                     x = round(self.main_player.pos[0])
                     y = round(self.main_player.pos[1])
 
+                b = recv_exact(self.server_socket, 1)
+
+                if b == b'H':
+                    with self.hurt_lock:
+                        self.hurt = True
+                else:
+                    with self.hurt_lock:
+                        self.hurt = False
+
+
                 self.server_socket.sendall(struct.pack("!ii", x, y))
 
                 
@@ -277,24 +290,29 @@ class Game:
 
                 for i in range(positions_expected):
 
-                    buf = recv_exact(self.server_socket, 12)
+                    buf = recv_exact(self.server_socket, 13)
                 
-                    player_pos_x, player_pos_y, username_len = struct.unpack("!iiI", buf)
+                    player_pos_x, player_pos_y, username_len, hurt_byte = struct.unpack("!iiIc", buf)
 
                     username = recv_exact(self.server_socket, username_len).decode()
 
 
 
-                    player_data[username] = (player_pos_x, player_pos_y)
+                    player_data[username] = (player_pos_x, player_pos_y, True if hurt_byte == b'H' else False)
+
 
                
 
-                for name, pos in player_data.items():        
+                for name, data in player_data.items():        
+                    pos = (data[0], data[1])
+                    hurt = data[2]
                     with self.other_players_lock:
                         if name in self.players: 
                             self.players[name].target_pos = pos
+                            self.players[name].hurt = hurt
                         if name not in self.players: 
                             self.players[name] = Player(name, pos, self)
+                            
 
                 with self.other_players_lock:
                     players_copy = dict(self.players)
@@ -354,7 +372,7 @@ class Game:
                     print(jab_x, jab_y, jab_direction)
 
                     with self.jabs_lock:
-                        self.jabs.append(Jab((jab_x, jab_y), self.direction_facing_dict_inverted[jab_direction]))
+                        self.jabs.append(Jab((jab_x, jab_y), self.direction_facing_dict_inverted[jab_direction], ''))
 
 
                                     
@@ -377,7 +395,9 @@ class Game:
         keys = pygame.key.get_pressed()
         
         
-        if not self.chat_open and self.main_player_jab is None:
+        with self.hurt_lock:
+            hurt_copy = self.hurt
+        if not self.chat_open and self.main_player_jab is None and not hurt_copy:
 
             if keys[pygame.K_a]:
                 self.direction_facing = 'left'
@@ -428,7 +448,7 @@ class Game:
 
 
             
-            self.main_player_jab = Jab(main_player_pos, self.direction_facing)
+            self.main_player_jab = Jab(main_player_pos, self.direction_facing, '')
 
     def run(self):
         networking_thread = threading.Thread(target=self.communicate_with_server)
