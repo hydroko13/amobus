@@ -7,9 +7,15 @@ class DeathAnimation:
     def __init__(self, pos):
         self.star_image = pygame.transform.scale_by(pygame.image.load(os.path.join('assets', 'img', 'sparkle.png')), 2).convert_alpha()
 
-        self.stars = [pos]
-
+        self.stars = []
+        self.center = pos
+        for i in range(12):
+            angle = math.radians((360 / 12) * i)
+            self.stars.append((pos[0] + math.cos(angle) * 10, pos[1] + math.sin(angle) * 10))
+ 
         self.star_opacity = 255
+        self.angle_offset = 0
+        self.spread = 0
 
     def draw(self, surf, cam, game):
         star_image_copy = self.star_image.copy()
@@ -24,7 +30,14 @@ class DeathAnimation:
             
     def update(self, dt):
 
+        for i in range(12):
+            angle = math.radians((360 / 12) * i + self.angle_offset)
+            self.stars[i] = (self.center[0] + math.cos(angle) * (10 + self.spread), self.center[1] + math.sin(angle) * (10 + self.spread))
+
         if self.star_opacity <= 0:
             self.star_opacity = 0
         else:
-            self.star_opacity -= dt * 50
+            self.star_opacity -= dt * 190
+            self.angle_offset += dt * 100
+            self.spread += dt * 120
+

@@ -172,6 +172,10 @@ class Game:
 
         self.jab_data = None
 
+        self.respawning = False
+        self.respawning_lock = threading.Lock()
+        self.chat_open_lock = threading.Lock()
+
        
         
 
@@ -195,6 +199,9 @@ class Game:
                 pygame.draw.rect(self.world_tilemap_surface, (8, 10, 8), tile_rect, 2)
 
     def draw(self):
+
+        with self.chat_open_lock:
+            chat_open = self.chat_open
 
         
         cam_offset = (self.cam.pos.x + self.window_width / 2, self.cam.pos.y + self.window_height / 2)
@@ -239,7 +246,7 @@ class Game:
 
                 self.window.blit(rendered_fps_text, (50, 50))
 
-        if self.chat_open:
+        if chat_open:
             type_a_message_label = self.notosans_font.render('Type a message and press enter...', False, (255, 255, 255), (20, 20, 20))
             self.window.blit(type_a_message_label, (50, self.window_height-100))
 
@@ -251,7 +258,7 @@ class Game:
                 chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
                 self.window.blit(chat_msg, (50, self.window_height-200-i*30))
                 
-        if not self.chat_open:
+        if not chat_open:
 
             for x in range(9):
                 if x+1 == self.selected_hotbar_slot:
@@ -403,6 +410,7 @@ class Game:
                     if dead_player_name == self.player_username:
                         with self.main_player_lock:
                             self.main_player.dead = True
+                        self.death()
 
                     else:
                         with self.other_players_lock:
@@ -420,12 +428,24 @@ class Game:
             print("Server error")
             self.done = True
 
+    def death(self):
+
+        with self.respawning_lock:
+            self.respawning = True
+        with self.chat_open_lock:
+            self.chat_open = False
+
 
     def update(self):
        
+        with self.respawning_lock:
+            is_respawning = self.respawning
 
         with self.main_player_lock:
             player_pos = self.main_player.pos
+        
+        with self.chat_open_lock:
+            chat_open = self.chat_open
         
         self.cam.pos.x = player_pos[0]
         self.cam.pos.y = player_pos[1]
@@ -438,40 +458,43 @@ class Game:
             hurt_copy = self.hurt
         with self.main_player_lock:
             self.main_player.hurt = hurt_copy
-        if not self.chat_open and self.main_player_jab is None and not hurt_copy:
 
-            if keys[pygame.K_a]:
-                self.direction_facing = 'left'
-                with self.main_player_lock:
-                    self.main_player.pos = (self.main_player.pos[0] - self.dt * 250, self.main_player.pos[1])
-
-            if keys[pygame.K_d]:
-                self.direction_facing = 'right'
-                with self.main_player_lock:
-                    self.main_player.pos = (self.main_player.pos[0] + self.dt * 250, self.main_player.pos[1])
+        if not is_respawning:
             
-            if keys[pygame.K_w]:
-                self.direction_facing = 'up'
-                with self.main_player_lock:
-                    self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] - self.dt * 250)
+            if not chat_open and self.main_player_jab is None and not hurt_copy:
 
-            if keys[pygame.K_s]:
-                self.direction_facing = 'down'
-                with self.main_player_lock:
-                    self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] + self.dt * 250)
+                if keys[pygame.K_a]:
+                    self.direction_facing = 'left'
+                    with self.main_player_lock:
+                        self.main_player.pos = (self.main_player.pos[0] - self.dt * 250, self.main_player.pos[1])
 
-        if not self.chat_open:
-            if keys[pygame.K_a]:
-                self.direction_facing = 'left'
+                if keys[pygame.K_d]:
+                    self.direction_facing = 'right'
+                    with self.main_player_lock:
+                        self.main_player.pos = (self.main_player.pos[0] + self.dt * 250, self.main_player.pos[1])
+                
+                if keys[pygame.K_w]:
+                    self.direction_facing = 'up'
+                    with self.main_player_lock:
+                        self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] - self.dt * 250)
 
-            if keys[pygame.K_d]:
-                self.direction_facing = 'right'
+                if keys[pygame.K_s]:
+                    self.direction_facing = 'down'
+                    with self.main_player_lock:
+                        self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] + self.dt * 250)
 
-            if keys[pygame.K_w]:
-                self.direction_facing = 'up'
+            if not chat_open:
+                if keys[pygame.K_a]:
+                    self.direction_facing = 'left'
 
-            if keys[pygame.K_s]:
-                self.direction_facing = 'down'
+                if keys[pygame.K_d]:
+                    self.direction_facing = 'right'
+
+                if keys[pygame.K_w]:
+                    self.direction_facing = 'up'
+
+                if keys[pygame.K_s]:
+                    self.direction_facing = 'down'
 
         self.main_player.target_pos = self.main_player.pos
 
@@ -512,6 +535,10 @@ class Game:
         networking_thread = threading.Thread(target=self.communicate_with_server)
         networking_thread.start()
         while not self.done:
+            with self.respawning_lock:
+                is_respawning = self.respawning
+            with self.chat_open_lock:
+                chat_open = self.chat_open
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.done = True
@@ -519,11 +546,12 @@ class Game:
                     if event.key == pygame.K_F3:
                         self.debug_hud = not self.debug_hud
                     if event.key == pygame.K_ESCAPE:
-                        if self.chat_open:
-                            self.chat_open = False
-                            self.chat_message = ''
+                        if chat_open and not is_respawning:
+                            with self.chat_open_lock:
+                                self.chat_open = False
+                            chat_message = ''
                     if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                        if self.chat_open:
+                        if self.chat_open and not is_respawning:
                             timestamp = time.time_ns()
                             with self.message_data_lock:
                                 self.message_data.append((timestamp, self.player_username, self.chat_message))
@@ -531,19 +559,20 @@ class Game:
                                 self.messages_sent.append((timestamp, self.chat_message))
                             self.chat_message = ''
                     if event.key == pygame.K_BACKSPACE:
-                        if self.chat_open:
+                        if chat_open and not is_respawning:
                             self.chat_message = self.chat_message[:-1]
                     if self.chat_open:
-                        if event.key in typeable_letters:
+                        if event.key in typeable_letters and not is_respawning:
                             letter = typeable_letters[event.key]
                             self.chat_message += letter
-                    if event.key == pygame.K_t:
-                        self.chat_open = True
-                    if event.key == pygame.K_o:
+                    if event.key == pygame.K_t and not is_respawning:
+                        with self.chat_open_lock:
+                            self.chat_open = True
+                    if event.key == pygame.K_o and not is_respawning:
                         if not self.chat_open and not self.hurt:
                             self.jab()
 
-                    if event.key in num_keys and not self.chat_open:
+                    if event.key in num_keys and not chat_open and not is_respawning:
                         n = num_keys[event.key]
 
                         if n == '1':
