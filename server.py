@@ -29,6 +29,8 @@ jab_echo_queue = deque()
 jab_echo_queue_lock = threading.Lock()
 jabs = []
 jabs_lock = threading.Lock()
+death_broadcast_queue = deque()
+death_broadcast_queue_lock = threading.Lock()
 dt = 0
 direction_facing_dict_inverted = {
     0: 'left',
@@ -38,8 +40,11 @@ direction_facing_dict_inverted = {
     
 }
 hurt_players = set()
+dead_players = set()
+dead_players_lock = threading.Lock()
 hurt_player_timers = []
 hurt_players_lock = threading.Lock()
+hurt_player_timers_lock = threading.Lock()
 
 
 def handle_player(client: socket.socket, addr):
@@ -63,7 +68,7 @@ def handle_player(client: socket.socket, addr):
 
         with lock1:
             
-            players[username] = (0, 0)
+            players[username] = (0, 0, 30) # x, y, health
 
     
         while True:
@@ -84,12 +89,17 @@ def handle_player(client: socket.socket, addr):
             player_pos_bytes = recv_exact(client, 8)
 
             player_pos_x, player_pos_y = struct.unpack('!ii', player_pos_bytes)
+
+            with lock1:
+                players_copy = dict(players)
+
+            client.sendall(struct.pack("!i", players_copy[username][2]))
             
             
 
             if username not in hurt_players_copy:
                 with lock1:
-                    players[username] = (player_pos_x, player_pos_y)
+                    players[username] = (player_pos_x, player_pos_y, players[username][2])
 
             with lock1:
                 players_copy = dict(players)
@@ -98,12 +108,14 @@ def handle_player(client: socket.socket, addr):
 
             client.sendall(struct.pack('!I', positions_expected))
 
-            for name, pos in players_copy.items():
+            for name, player in players_copy.items():
 
                 if name != username:
 
-                    x = int(pos[0])
-                    y = int(pos[1])
+                    x = int(player[0])
+                    y = int(player[1])
+                    
+                    # player[2] is health
 
                     encoded_name = name.encode()
 
@@ -112,7 +124,7 @@ def handle_player(client: socket.socket, addr):
                     else:
                         b = b'N'
 
-                    data_buffer = struct.pack("!iiIc", x, y, len(encoded_name), b)
+                    data_buffer = struct.pack("!iiiIc", x, y, player[2], len(encoded_name), b)
 
                     client.sendall(data_buffer + encoded_name)
 
@@ -180,6 +192,32 @@ def handle_player(client: socket.socket, addr):
 
             else:
                 client.sendall(b"N")
+        
+            death_data = None
+            with death_broadcast_queue_lock:
+                
+                if len(death_broadcast_queue) > 0:
+                    if death_broadcast_queue[-1][0] == username:
+                        death_data = death_broadcast_queue.pop()
+
+
+            
+
+            if death_data is not None:
+
+                client.sendall(b'D')
+
+                dead_player_name, death_x, death_y = death_data[1]
+
+                dead_player_name_encoded = dead_player_name.encode()
+
+                client.sendall(struct.pack("!Iii", len(dead_player_name_encoded), death_x, death_y)) # send byte length of dead player name, death x, and death y
+
+                client.sendall(dead_player_name_encoded)
+
+            else:
+                client.sendall(b'N')
+
 
 
     except (ConnectionError, OSError):
@@ -207,33 +245,80 @@ def update_server():
                 jab.update_serverside(dt)
                 tip = jab.get_tip_pos()
                 
-                for name, pos in player_data_copy.items():
-                    distance = math.dist(pos, tip)
-                    if distance < 18 and name != jab.player_name:
-
-                        hurt_players_temp.add(name)
+                for name, player in player_data_copy.items():
+                    distance = math.dist((player[0], player[1]), tip)
+                    if distance < 25 and name != jab.player_name:
+                        if not jab.hit_player:
+                        
+                            jab.hit_player = True
+                            
+                            hurt_players_temp.add(name)
 
             
                             
 
             jabs = [jab for jab in jabs if not jab.finished]
 
+        with lock1:
+            for name in hurt_players_temp:
+                
+                players[name] = (players[name][0], players[name][1], players[name][2]-2)
+
         with hurt_players_lock:
+            new_timers = []
             for name in hurt_players_temp:
                 hurt_players.add(name)
-                hurt_player_timers.append((0, name))
+                new_timers.append((0, name))
+            
+        
+        with hurt_player_timers_lock:
+            for timer in new_timers:
+                hurt_player_timers.append((timer[0], timer[1]))
    
-        for i, timer in enumerate(hurt_player_timers):
-            hurt_player_timers[i] = (timer[0] + dt, timer[1])
+        with hurt_player_timers_lock:
+            for i, timer in enumerate(hurt_player_timers):
+                hurt_player_timers[i] = (timer[0] + dt, timer[1])
 
-        players_timer_finished = [t[1] for t in hurt_player_timers if not t[0] < 0.4]
+        with hurt_player_timers_lock:
+            hurt_player_timers_copy = list(hurt_player_timers)
+
+        players_timer_finished = [t[1] for t in hurt_player_timers_copy if t[0] >= 0.4]
 
         with hurt_players_lock:
             hurt_players = {p for p in hurt_players if p not in players_timer_finished}
+
         
-        hurt_player_timers = [t for t in hurt_player_timers if t[0] < 0.4]
+        with hurt_player_timers_lock:
+            hurt_player_timers = [t for t in hurt_player_timers if t[0] < 0.4]
             
-    
+        with lock1:
+            players_copy = dict(players)
+
+        new_dead_players = []
+
+        with dead_players_lock:
+            dead_players_copy = set(dead_players)
+
+        for name, player in players_copy.items():
+            if player[2] <= 0: # check if health <= 0
+                if name not in dead_players_copy:
+                    new_dead_players.append((name, player[0], player[1]))
+                    
+
+        if len(new_dead_players) > 0:
+            
+            with death_broadcast_queue_lock:
+                
+                for new_dead_player in new_dead_players:
+                    for name, _ in players_copy.items():
+                        death_broadcast_queue.append((name, new_dead_player))
+                    
+                        
+            with dead_players_lock:
+                for new_dead_player in new_dead_players:
+                    dead_players.add(new_dead_player)
+
+
 
 server.listen()
 

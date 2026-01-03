@@ -106,7 +106,7 @@ class Game:
     
     
         self.main_player = Player(self.player_username, (100, 100), self)
-        self.player_pos_lock = threading.Lock()
+        self.main_player_lock = threading.Lock()
         self.other_players_lock = threading.Lock()
         self.sent_messages_lock = threading.Lock()
         self.message_data_lock = threading.Lock()
@@ -140,6 +140,9 @@ class Game:
 
         self.hurt = False
         self.hurt_lock = threading.Lock()
+
+        self.health = 30
+        self.health_lock = threading.Lock()
 
 
         
@@ -206,7 +209,7 @@ class Game:
             for name, player in self.players.items():
                 player.draw(self.window, self.cam, False)
                 
-        with self.player_pos_lock:
+        with self.main_player_lock:
             main_player_pos = self.main_player.pos
 
         
@@ -216,7 +219,7 @@ class Game:
             self.main_player_jab.draw(self)
         
 
-        with self.player_pos_lock:
+        with self.main_player_lock:
             # maybe some room for optimization here?
 
             self.main_player.draw(self.window, self.cam, True)
@@ -259,13 +262,20 @@ class Game:
                 text_surf = self.notosans_font.render(f'{x+1}', False, (230, 230, 230))
                 self.window.blit(text_surf, text_surf.get_rect(center=(x*52+675, self.window_height-100)))
 
+        with self.health_lock:
+            health_copy = self.health
+
+        pygame.draw.rect(self.window, (46, 46, 46), pygame.Rect(self.window_width-350, 80, 200, 30))
+        pygame.draw.rect(self.window, (250, 61, 40), pygame.Rect(self.window_width-350, 80, (health_copy/30)*200, 30))
+
+
         
         
     def communicate_with_server(self):
         try:
             while not self.done:
 
-                with self.player_pos_lock:
+                with self.main_player_lock:
                     x = round(self.main_player.pos[0])
                     y = round(self.main_player.pos[1])
 
@@ -281,6 +291,10 @@ class Game:
 
                 self.server_socket.sendall(struct.pack("!ii", x, y))
 
+                received_health, = struct.unpack('!i', recv_exact(self.server_socket, 4))
+
+                with self.health_lock:
+                    self.health = received_health
                 
 
                 positions_expected, = struct.unpack("!I", recv_exact(self.server_socket, 4))
@@ -290,9 +304,9 @@ class Game:
 
                 for i in range(positions_expected):
 
-                    buf = recv_exact(self.server_socket, 13)
+                    buf = recv_exact(self.server_socket, 17)
                 
-                    player_pos_x, player_pos_y, username_len, hurt_byte = struct.unpack("!iiIc", buf)
+                    player_pos_x, player_pos_y, health, username_len, hurt_byte = struct.unpack("!iiiIc", buf)
 
                     username = recv_exact(self.server_socket, username_len).decode()
 
@@ -369,10 +383,26 @@ class Game:
                 if b == b'J':
                     jab_x, jab_y, jab_direction = struct.unpack("!iii", recv_exact(self.server_socket, 12))
 
-                    print(jab_x, jab_y, jab_direction)
 
                     with self.jabs_lock:
                         self.jabs.append(Jab((jab_x, jab_y), self.direction_facing_dict_inverted[jab_direction], ''))
+
+                death_b = recv_exact(self.server_socket, 1)
+                print(death_b)
+                if death_b == b'D':
+                    dead_player_name_length, death_x, death_y = struct.unpack("!Iii", recv_exact(self.server_socket, 12))
+                    dead_player_name = recv_exact(self.server_socket, dead_player_name_length).decode()
+                    if dead_player_name == self.player_username:
+                        with self.main_player_lock:
+                            self.main_player.dead = True
+
+                    else:
+                        with self.other_players_lock:
+                            for name, player in self.players.items():
+                                if name == dead_player_name:
+
+                                    self.players[name].dead = True
+                                    break
 
 
                                     
@@ -386,7 +416,7 @@ class Game:
     def update(self):
        
 
-        with self.player_pos_lock:
+        with self.main_player_lock:
             player_pos = self.main_player.pos
         
         self.cam.pos.x = player_pos[0]
@@ -397,29 +427,42 @@ class Game:
         
         with self.hurt_lock:
             hurt_copy = self.hurt
-        with self.player_pos_lock:
+        with self.main_player_lock:
             self.main_player.hurt = hurt_copy
         if not self.chat_open and self.main_player_jab is None and not hurt_copy:
 
             if keys[pygame.K_a]:
                 self.direction_facing = 'left'
-                with self.player_pos_lock:
+                with self.main_player_lock:
                     self.main_player.pos = (self.main_player.pos[0] - self.dt * 250, self.main_player.pos[1])
 
             if keys[pygame.K_d]:
                 self.direction_facing = 'right'
-                with self.player_pos_lock:
+                with self.main_player_lock:
                     self.main_player.pos = (self.main_player.pos[0] + self.dt * 250, self.main_player.pos[1])
             
             if keys[pygame.K_w]:
                 self.direction_facing = 'up'
-                with self.player_pos_lock:
+                with self.main_player_lock:
                     self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] - self.dt * 250)
 
             if keys[pygame.K_s]:
                 self.direction_facing = 'down'
-                with self.player_pos_lock:
+                with self.main_player_lock:
                     self.main_player.pos = (self.main_player.pos[0], self.main_player.pos[1] + self.dt * 250)
+
+        if not self.chat_open:
+            if keys[pygame.K_a]:
+                self.direction_facing = 'left'
+
+            if keys[pygame.K_d]:
+                self.direction_facing = 'right'
+
+            if keys[pygame.K_w]:
+                self.direction_facing = 'up'
+
+            if keys[pygame.K_s]:
+                self.direction_facing = 'down'
 
         self.main_player.target_pos = self.main_player.pos
 
@@ -438,7 +481,7 @@ class Game:
     def jab(self):
         if self.main_player_jab is None:
 
-            with self.player_pos_lock:
+            with self.main_player_lock:
                 main_player_pos = self.main_player.pos
 
 

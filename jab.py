@@ -11,6 +11,7 @@ class Jab:
         self.direction = direction
         self.player_name = player_name
         self.finished = False
+        self.hit_player = False
 
     def update(self, game):
         if self.jab_rebound:
