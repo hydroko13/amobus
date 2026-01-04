@@ -1,3 +1,4 @@
+import steam
 import pygame
 import os
 from player import Player
@@ -11,6 +12,7 @@ import time
 from jab import Jab
 from death_animation import DeathAnimation
 import random
+
 
 pygame.init()
 
@@ -667,5 +669,7 @@ class Game:
             pygame.display.flip()
         networking_thread.join()
 
-game = Game()
-game.run()
+if __name__ == '__main__':
+    game = Game()
+    game.run()
+
