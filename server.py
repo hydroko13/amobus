@@ -371,7 +371,7 @@ def update_server():
                 players_to_respawn.append(timer[0])
 
         with respawn_timers_lock:
-            respawn_timers = [timer for timer in respawn_timers if timer[1] < 1]
+            respawn_timers = [timer for timer in respawn_timers if timer[1] < 3]
 
         with lock1:
             players_copy = dict(players)
