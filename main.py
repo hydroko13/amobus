@@ -10,6 +10,7 @@ from camera import Camera
 import time
 from jab import Jab
 from death_animation import DeathAnimation
+import random
 
 pygame.init()
 
@@ -97,7 +98,8 @@ class Game:
         self.server_socket.sendall(self.player_username.encode())
         self.window_width = 1280
         self.window_height = 720
-        self.window = pygame.display.set_mode((self.window_width, self.window_height), pygame.DOUBLEBUF, vsync=1)
+        self.internal_window = pygame.display.set_mode((self.window_width, self.window_height), pygame.DOUBLEBUF, vsync=1)
+        self.window = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
         self.clock = pygame.time.Clock()
         self.done = False
         self.dt = 0
@@ -175,9 +177,12 @@ class Game:
         self.respawning = False
         self.respawning_lock = threading.Lock()
         self.chat_open_lock = threading.Lock()
+        self.screen_shake_tick = 0
+        self.screen_shake_strength = 3
+        self.screen_shake_rate = 0.04
+        self.screen_offset = (0, 0)
 
         
-
 
     def update_world_surface(self):
         
@@ -198,6 +203,8 @@ class Game:
                 pygame.draw.rect(self.world_tilemap_surface, (8, 10, 8), tile_rect, 2)
 
     def draw(self):
+
+        self.window.fill((0, 0, 0, 0))
 
         with self.chat_open_lock:
             chat_open = self.chat_open
@@ -268,7 +275,7 @@ class Game:
                 _, name, text = msg
                 chat_msg = self.notosans_font.render(f'<{name}> {text}', False, (255, 255, 255), (20, 20, 20))
                 self.window.blit(chat_msg, (50, self.window_height-300-i*30))
-                
+
         
             
         if not chat_open:
@@ -294,6 +301,10 @@ class Game:
 
         pygame.draw.rect(self.window, (46, 46, 46), pygame.Rect(self.window_width-350, 80, 200, 30))
         pygame.draw.rect(self.window, (250, 61, 40), pygame.Rect(self.window_width-350, 80, (health_copy/30)*200, 30))
+
+        self.internal_window.blit(self.window, self.screen_offset)
+
+        
 
 
         
@@ -489,8 +500,14 @@ class Game:
 
         keys = pygame.key.get_pressed()
 
-        
-        
+
+        if is_respawning:
+            if self.screen_shake_tick >= self.screen_shake_rate:
+                self.screen_shake_tick = 0
+                self.screen_offset = (random.randint(-self.screen_shake_strength, self.screen_shake_strength), random.randint(-self.screen_shake_strength, self.screen_shake_strength))
+            else:
+                self.screen_shake_tick += self.dt
+            
 
         with self.hurt_lock:
             hurt_copy = self.hurt
@@ -643,7 +660,7 @@ class Game:
 
 
 
-            self.window.fill((0, 0, 0))
+            self.internal_window.fill((0, 0, 0))
             self.dt = self.clock.tick(60) / 1000
             self.update()
             self.draw()

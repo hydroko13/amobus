@@ -33,6 +33,8 @@ class Player:
                     pygame.draw.circle(surf, (0, 255, 0), offset_position, 20)
                 else:
                     pygame.draw.circle(surf, (150, 255, 150), offset_position, 20)
+
+            pygame.draw.circle(surf, (12, 12, 12), offset_position, 20, 2)
                     
             surf.blit(self.username_surf, self.username_surf.get_rect(center=(offset_position[0], offset_position[1]-20)))
 

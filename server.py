@@ -389,8 +389,6 @@ def update_server():
             for player_to_respawn in players_to_respawn:
                 dead_players.remove(player_to_respawn)
 
-        with respawn_timers_lock:
-            print(respawn_timers)
         
 
 
